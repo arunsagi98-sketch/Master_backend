@@ -40,15 +40,27 @@ class ReportGenerator:
         self.ws.title = 'MPN & CPN Breakdown'
         self.current_row = 1
 
-    @staticmethod
-    def _sort_campaigns(campaigns: List[CampaignData]) -> List[CampaignData]:
-        """Sort campaigns in the expected order"""
+    def _sort_campaigns(self, campaigns: List[CampaignData]) -> List[CampaignData]:
+        """Sort campaigns: Known audiences first, then others alphabetically, then by burst."""
         def sort_key(campaign):
-            key = (campaign.audience, campaign.burst_number)
+            key = (campaign.audience, str(campaign.burst_number))
+            
+            # Known priority order
+            priority_list = [
+                ('Vietnamese', '1'),
+                ('Punjabi', '1'),
+                ('Filipino', '1'),
+                ('Vietnamese', '2'),
+                ('Punjabi', '2'),
+                ('Filipino', '2')
+            ]
+            
             try:
-                return ReportGenerator.EXPECTED_ORDER.index(key)
+                # If it's in the priority list, use its index
+                return (0, priority_list.index(key), "")
             except ValueError:
-                return len(ReportGenerator.EXPECTED_ORDER)
+                # Otherwise, sort by audience name then burst number
+                return (1, campaign.audience, campaign.burst_number)
 
         return sorted(campaigns, key=sort_key)
 

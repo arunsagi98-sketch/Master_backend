@@ -16,25 +16,29 @@ class ExcelParser:
     @staticmethod
     def parse_filename(filename: str) -> Tuple[str, str]:
         """
-        Extract audience and burst number from filename.
-        Returns (audience, burst_number) e.g., ('Vietnamese', '1')
+        Try to extract audience and burst number from filename.
+        Returns (audience, burst_number). Fallbacks to filename/1 if not found.
         """
         filename_lower = filename.lower()
         
-        # Match audience
+        # Match audience (Try to find known ones, otherwise use filename)
         if 'vietnamese' in filename_lower:
             audience = 'Vietnamese'
         elif 'punjabi' in filename_lower:
             audience = 'Punjabi'
+        elif 'filipino' in filename_lower:
+            audience = 'Filipino'
         else:
-            raise ValueError(f"Cannot parse audience from filename: {filename}")
+            # Fallback: Use the first part of the filename as the audience
+            audience = filename.split('_')[0].split('-')[0].split('.')[0]
         
-        # Match burst number
+        # Match burst number (Look for 'burst' followed by a number)
         burst_match = re.search(r'burst[_-]?(\d+)', filename_lower)
         if burst_match:
             burst_number = burst_match.group(1)
         else:
-            raise ValueError(f"Cannot parse burst number from filename: {filename}")
+            # Fallback: Assume Burst 1
+            burst_number = "1"
         
         return audience, burst_number
     
