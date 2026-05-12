@@ -47,38 +47,45 @@ class ExcelParser:
         """Parse a single input campaign report file"""
         wb = load_workbook(filepath, data_only=True)
         
-        # Validate sheets
-        for sheet in ExcelParser.REQUIRED_SHEETS:
-            if sheet not in wb.sheetnames:
-                raise ValueError(f"Missing required sheet: {sheet}")
+        # Only REACH is strictly required for core metrics
+        if 'REACH' not in wb.sheetnames:
+            raise ValueError("Missing required sheet: REACH")
         
         # Get filename for audience/burst extraction
         filename = filepath.split('\\')[-1]
         audience, burst_number = ExcelParser.parse_filename(filename)
         
-        # Extract REACH data (Row 2)
+        # Extract REACH data (Required)
         reach_sheet = wb['REACH']
         reach_data = ExcelParser._parse_reach_sheet(reach_sheet)
         
-        # Extract DEVICE data
-        device_sheet = wb['DEVICE']
-        device_breakdown = ExcelParser._parse_device_sheet(device_sheet)
-        
-        # Extract CREATIVE data
-        creative_sheet = wb['CREATIVE']
-        creative_breakdown = ExcelParser._parse_creative_sheet(creative_sheet)
-        
-        # Extract AGE data
-        age_sheet = wb['AGE']
-        age_breakdown = ExcelParser._parse_age_sheet(age_sheet)
-        
-        # Extract GENDER data
-        gender_sheet = wb['GENDER']
-        gender_breakdown = ExcelParser._parse_gender_sheet(gender_sheet)
-        
-        # Extract dates from DATE sheet
-        date_sheet = wb['DATE']
-        start_date, end_date = ExcelParser._parse_date_sheet(date_sheet)
+        # Extract optional sheets
+        device_breakdown = []
+        if 'DEVICE' in wb.sheetnames:
+            device_breakdown = ExcelParser._parse_device_sheet(wb['DEVICE'])
+            
+        creative_breakdown = []
+        if 'CREATIVE' in wb.sheetnames:
+            creative_breakdown = ExcelParser._parse_creative_sheet(wb['CREATIVE'])
+            
+        age_breakdown = []
+        if 'AGE' in wb.sheetnames:
+            age_breakdown = ExcelParser._parse_age_sheet(wb['AGE'])
+        else:
+            # Generate empty age breakdown if missing
+            age_breakdown = [AgeBreakdown(age_band=b, impressions=0, clicks=0, ctr=0) for b in ['18-24', '25-34', '35-44', '45-54']]
+            
+        gender_breakdown = []
+        if 'GENDER' in wb.sheetnames:
+            gender_breakdown = ExcelParser._parse_gender_sheet(wb['GENDER'])
+        else:
+            # Generate empty gender breakdown if missing
+            gender_breakdown = [GenderBreakdown(gender=g, impressions=0, clicks=0, ctr=0) for g in ['Male', 'Female']]
+            
+        # Extract dates
+        start_date, end_date = datetime.today(), datetime.today()
+        if 'DATE' in wb.sheetnames:
+            start_date, end_date = ExcelParser._parse_date_sheet(wb['DATE'])
         
         return CampaignData(
             audience=audience,
