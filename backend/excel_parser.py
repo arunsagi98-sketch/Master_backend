@@ -1,5 +1,5 @@
 import re
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from openpyxl import load_workbook
 from backend.models import (
     ReachData, DeviceBreakdown, CreativeBreakdown, 
