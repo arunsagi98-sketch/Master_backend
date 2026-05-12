@@ -1,0 +1,328 @@
+import re
+from typing import List, Dict, Tuple
+from openpyxl import load_workbook
+from backend.models import (
+    ReachData, DeviceBreakdown, CreativeBreakdown, 
+    AgeBreakdown, GenderBreakdown, CampaignData, TemplateMetadata
+)
+from datetime import datetime
+
+class ExcelParser:
+    """Parses input Excel files and template"""
+    
+    REQUIRED_SHEETS = ['REACH', 'DATE', 'APP URL', 'TIME OF DAY', 'EXCHANGE', 
+                       'DEVICE', 'CREATIVE', 'CITY', 'AGE', 'GENDER']
+    
+    @staticmethod
+    def parse_filename(filename: str) -> Tuple[str, str]:
+        """
+        Extract audience and burst number from filename.
+        Returns (audience, burst_number) e.g., ('Vietnamese', '1')
+        """
+        filename_lower = filename.lower()
+        
+        # Match audience
+        if 'vietnamese' in filename_lower:
+            audience = 'Vietnamese'
+        elif 'punjabi' in filename_lower:
+            audience = 'Punjabi'
+        else:
+            raise ValueError(f"Cannot parse audience from filename: {filename}")
+        
+        # Match burst number
+        burst_match = re.search(r'burst[_-]?(\d+)', filename_lower)
+        if burst_match:
+            burst_number = burst_match.group(1)
+        else:
+            raise ValueError(f"Cannot parse burst number from filename: {filename}")
+        
+        return audience, burst_number
+    
+    @staticmethod
+    def parse_input_file(filepath: str) -> CampaignData:
+        """Parse a single input campaign report file"""
+        wb = load_workbook(filepath, data_only=True)
+        
+        # Validate sheets
+        for sheet in ExcelParser.REQUIRED_SHEETS:
+            if sheet not in wb.sheetnames:
+                raise ValueError(f"Missing required sheet: {sheet}")
+        
+        # Get filename for audience/burst extraction
+        filename = filepath.split('\\')[-1]
+        audience, burst_number = ExcelParser.parse_filename(filename)
+        
+        # Extract REACH data (Row 2)
+        reach_sheet = wb['REACH']
+        reach_data = ExcelParser._parse_reach_sheet(reach_sheet)
+        
+        # Extract DEVICE data
+        device_sheet = wb['DEVICE']
+        device_breakdown = ExcelParser._parse_device_sheet(device_sheet)
+        
+        # Extract CREATIVE data
+        creative_sheet = wb['CREATIVE']
+        creative_breakdown = ExcelParser._parse_creative_sheet(creative_sheet)
+        
+        # Extract AGE data
+        age_sheet = wb['AGE']
+        age_breakdown = ExcelParser._parse_age_sheet(age_sheet)
+        
+        # Extract GENDER data
+        gender_sheet = wb['GENDER']
+        gender_breakdown = ExcelParser._parse_gender_sheet(gender_sheet)
+        
+        # Extract dates from DATE sheet
+        date_sheet = wb['DATE']
+        start_date, end_date = ExcelParser._parse_date_sheet(date_sheet)
+        
+        return CampaignData(
+            audience=audience,
+            burst_number=burst_number,
+            reach_data=reach_data,
+            device_breakdown=device_breakdown,
+            creative_breakdown=creative_breakdown,
+            age_breakdown=age_breakdown,
+            gender_breakdown=gender_breakdown,
+            start_date=start_date,
+            end_date=end_date
+        )
+    
+    @staticmethod
+    def _parse_reach_sheet(sheet) -> ReachData:
+        """Extract data from REACH sheet, Row 2"""
+        row = 2
+        actual_impressions = sheet.cell(row, 1).value or 0
+        link_clicks = sheet.cell(row, 2).value or 0
+        ctr = sheet.cell(row, 3).value or 0
+        reach = sheet.cell(row, 4).value or 0
+        frequency = sheet.cell(row, 5).value or 3
+        
+        return ReachData(
+            actual_impressions=float(actual_impressions),
+            link_clicks=float(link_clicks),
+            ctr=float(ctr),
+            reach=float(reach),
+            frequency=float(frequency)
+        )
+    
+    @staticmethod
+    def _parse_device_sheet(sheet) -> List[DeviceBreakdown]:
+        """Extract device breakdown data"""
+        devices = []
+        
+        # Map source names to output names
+        device_mapping = {
+            'Mobile': 'Mobile',
+            'Smart Phone': 'Mobile',
+            'Tablet': 'Tablet',
+            'Desktop': 'Desktop'
+        }
+        
+        row = 2
+        while True:
+            device_name = sheet.cell(row, 1).value
+            if device_name is None:
+                break
+            
+            if str(device_name).strip().lower() == 'grand total':
+                row += 1
+                continue
+            
+            # Map device name
+            mapped_name = device_mapping.get(device_name, device_name)
+            
+            impressions = sheet.cell(row, 2).value or 0
+            clicks = sheet.cell(row, 3).value or 0
+            ctr = sheet.cell(row, 4).value or 0
+            
+            devices.append(DeviceBreakdown(
+                device_type=mapped_name,
+                impressions=float(impressions),
+                clicks=float(clicks),
+                ctr=float(ctr)
+            ))
+            row += 1
+        
+        return devices
+    
+    @staticmethod
+    def _parse_creative_sheet(sheet) -> List[CreativeBreakdown]:
+        """Extract creative breakdown data"""
+        creatives = []
+        
+        row = 2
+        while True:
+            creative_name = sheet.cell(row, 1).value
+            if creative_name is None:
+                break
+            
+            if str(creative_name).strip().lower() == 'grand total':
+                row += 1
+                continue
+            
+            impressions = sheet.cell(row, 2).value or 0
+            clicks = sheet.cell(row, 3).value or 0
+            ctr = sheet.cell(row, 4).value or 0
+            
+            creatives.append(CreativeBreakdown(
+                name=str(creative_name),
+                impressions=float(impressions),
+                clicks=float(clicks),
+                ctr=float(ctr)
+            ))
+            row += 1
+        
+        return creatives
+    
+    @staticmethod
+    def _parse_age_sheet(sheet) -> List[AgeBreakdown]:
+        """Extract age band breakdown data"""
+        ages = []
+        age_order = ['18-24', '25-34', '35-44', '45-54']
+        
+        for age_band in age_order:
+            row = 2
+            found = False
+            while True:
+                age_name = sheet.cell(row, 1).value
+                if age_name is None:
+                    break
+                
+                if str(age_name).strip().lower() == 'grand total':
+                    row += 1
+                    continue
+                
+                if str(age_name).strip() == age_band:
+                    impressions = sheet.cell(row, 2).value or 0
+                    clicks = sheet.cell(row, 3).value or 0
+                    ctr = sheet.cell(row, 4).value or 0
+                    
+                    ages.append(AgeBreakdown(
+                        age_band=age_band,
+                        impressions=float(impressions),
+                        clicks=float(clicks),
+                        ctr=float(ctr)
+                    ))
+                    found = True
+                    break
+                row += 1
+            
+            # Add even if not found (will have 0 values)
+            if not found:
+                ages.append(AgeBreakdown(
+                    age_band=age_band,
+                    impressions=0,
+                    clicks=0,
+                    ctr=0
+                ))
+        
+        return ages
+    
+    @staticmethod
+    def _parse_gender_sheet(sheet) -> List[GenderBreakdown]:
+        """Extract gender breakdown data"""
+        genders = []
+        gender_order = ['Male', 'Female']
+        
+        for gender in gender_order:
+            row = 2
+            found = False
+            while True:
+                gender_name = sheet.cell(row, 1).value
+                if gender_name is None:
+                    break
+                
+                if str(gender_name).strip().lower() == 'grand total':
+                    row += 1
+                    continue
+                
+                if str(gender_name).strip() == gender:
+                    impressions = sheet.cell(row, 2).value or 0
+                    clicks = sheet.cell(row, 3).value or 0
+                    ctr = sheet.cell(row, 4).value or 0
+                    
+                    genders.append(GenderBreakdown(
+                        gender=gender,
+                        impressions=float(impressions),
+                        clicks=float(clicks),
+                        ctr=float(ctr)
+                    ))
+                    found = True
+                    break
+                row += 1
+            
+            # Add even if not found
+            if not found:
+                genders.append(GenderBreakdown(
+                    gender=gender,
+                    impressions=0,
+                    clicks=0,
+                    ctr=0
+                ))
+        
+        return genders
+    
+    @staticmethod
+    def _parse_date_sheet(sheet) -> Tuple[datetime, datetime]:
+        """Extract start and end dates from DATE sheet column A"""
+        dates = []
+        row = 2  # Skip header row
+        
+        while True:
+            cell_value = sheet.cell(row, 1).value
+            if cell_value is None:
+                break
+            
+            # Skip "Grand Total" rows
+            if str(cell_value).strip().lower() == "grand total":
+                row += 1
+                continue
+            
+            # Parse date
+            if isinstance(cell_value, datetime):
+                parsed_date = cell_value
+            elif isinstance(cell_value, str):
+                try:
+                    parsed_date = datetime.strptime(cell_value.strip(), "%d %B, %Y")
+                except ValueError:
+                    row += 1
+                    continue
+            else:
+                row += 1
+                continue
+            
+            dates.append(parsed_date)
+            row += 1
+        
+        if not dates:
+            # Fallback if no dates found
+            today = datetime.today()
+            return today, today
+        
+        start_date = min(dates)
+        end_date = max(dates)
+        return start_date, end_date
+    
+    @staticmethod
+    def parse_template_file(filepath: str) -> TemplateMetadata:
+        """Parse template file to extract metadata"""
+        wb = load_workbook(filepath, data_only=True)
+        
+        if 'MPN & CPN Breakdown' not in wb.sheetnames:
+            raise ValueError("Template must contain 'MPN & CPN Breakdown' sheet")
+        
+        sheet = wb['MPN & CPN Breakdown']
+        
+        # Extract template metadata from the sheet
+        # This will be customized based on actual template structure
+        # For now, return placeholder values
+        return TemplateMetadata(
+            platform='MPN',
+            format_type='Banner',
+            booked_impressions={},
+            start_date={},
+            end_date={},
+            reporting_date={},
+            audience_labels={}
+        )
