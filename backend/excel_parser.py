@@ -43,6 +43,29 @@ class ExcelParser:
         return audience, burst_number
     
     @staticmethod
+    def _extract_audience_from_creative(creatives: List[CreativeBreakdown]) -> Optional[str]:
+        """Extract audience name (e.g., Filipino) from creative names"""
+        if not creatives:
+            return None
+            
+        for creative in creatives:
+            name = creative.name
+            # Common pattern: RYMES0055_CA01501_Filipino_...
+            # We look for Vietnamese, Punjabi, Filipino, etc.
+            name_lower = name.lower()
+            if 'vietnamese' in name_lower: return 'Vietnamese'
+            if 'punjabi' in name_lower: return 'Punjabi'
+            if 'filipino' in name_lower: return 'Filipino'
+            
+            # Fallback: Try to take the 3rd part of the underscore-separated name
+            parts = name.split('_')
+            if len(parts) >= 3:
+                # Usually: CODE_CODE_AUDIENCE_...
+                return parts[2]
+                
+        return None
+
+    @staticmethod
     def parse_input_file(filepath: str) -> CampaignData:
         """Parse a single input campaign report file"""
         wb = load_workbook(filepath, data_only=True)
@@ -51,35 +74,38 @@ class ExcelParser:
         if 'REACH' not in wb.sheetnames:
             raise ValueError("Missing required sheet: REACH")
         
-        # Get filename for audience/burst extraction
+        # Extract filename info as a baseline
         filename = filepath.split('\\')[-1]
-        audience, burst_number = ExcelParser.parse_filename(filename)
+        file_audience, burst_number = ExcelParser.parse_filename(filename)
         
-        # Extract REACH data (Required)
-        reach_sheet = wb['REACH']
-        reach_data = ExcelParser._parse_reach_sheet(reach_sheet)
-        
-        # Extract optional sheets
-        device_breakdown = []
-        if 'DEVICE' in wb.sheetnames:
-            device_breakdown = ExcelParser._parse_device_sheet(wb['DEVICE'])
-            
+        # Extract CREATIVE data FIRST to get the real audience name
         creative_breakdown = []
         if 'CREATIVE' in wb.sheetnames:
             creative_breakdown = ExcelParser._parse_creative_sheet(wb['CREATIVE'])
+            
+        # Try to get audience from creative sheet, fallback to filename
+        extracted_audience = ExcelParser._extract_audience_from_creative(creative_breakdown)
+        audience = extracted_audience if extracted_audience else file_audience
+        
+        # Extract REACH data
+        reach_sheet = wb['REACH']
+        reach_data = ExcelParser._parse_reach_sheet(reach_sheet)
+        
+        # Extract other optional sheets
+        device_breakdown = []
+        if 'DEVICE' in wb.sheetnames:
+            device_breakdown = ExcelParser._parse_device_sheet(wb['DEVICE'])
             
         age_breakdown = []
         if 'AGE' in wb.sheetnames:
             age_breakdown = ExcelParser._parse_age_sheet(wb['AGE'])
         else:
-            # Generate empty age breakdown if missing
             age_breakdown = [AgeBreakdown(age_band=b, impressions=0, clicks=0, ctr=0) for b in ['18-24', '25-34', '35-44', '45-54']]
             
         gender_breakdown = []
         if 'GENDER' in wb.sheetnames:
             gender_breakdown = ExcelParser._parse_gender_sheet(wb['GENDER'])
         else:
-            # Generate empty gender breakdown if missing
             gender_breakdown = [GenderBreakdown(gender=g, impressions=0, clicks=0, ctr=0) for g in ['Male', 'Female']]
             
         # Extract dates
