@@ -6,9 +6,9 @@ import tempfile
 from pathlib import Path
 from pydantic import BaseModel
 from typing import List
-from excel_parser import ExcelParser
-from report_generator import ReportGenerator
-from models import TemplateMetadata
+from backend.excel_parser import ExcelParser
+from backend.report_generator import ReportGenerator
+from backend.models import TemplateMetadata
 
 app = FastAPI()
 
