@@ -343,9 +343,10 @@ class ReportGenerator:
 
         self.current_row += 1
 
-    def _allocate_reach(self, total_reach: int, impressions_list: List[float], seed: str) -> List[int]:
-        """Allocate overview reach across breakdown rows, optionally randomizing."""
-        if not impressions_list or total_reach <= 0:
+    def _allocate_metric(self, total: float, impressions_list: List[float], seed: str) -> List[int]:
+        """Allocate an overview total across breakdown rows with stable random variation."""
+        total = int(round(total or 0))
+        if not impressions_list or total <= 0:
             return [0] * len(impressions_list)
 
         rnd = random.Random(seed)
@@ -358,15 +359,25 @@ class ReportGenerator:
         if total_weight == 0:
             return [0] * len(impressions_list)
 
-        raw_allocations = [total_reach * (w / total_weight) for w in weighted_impressions]
+        raw_allocations = [total * (w / total_weight) for w in weighted_impressions]
         allocated = [int(round(value)) for value in raw_allocations]
 
-        difference = total_reach - sum(allocated)
+        difference = total - sum(allocated)
         if difference != 0:
             index = max(range(len(allocated)), key=lambda i: allocated[i])
             allocated[index] += difference
 
         return allocated
+
+    def _allocate_reach(self, total_reach: int, impressions_list: List[float], seed: str) -> List[int]:
+        """Allocate overview reach across breakdown rows."""
+        return self._allocate_metric(total_reach, impressions_list, seed)
+
+    def _allocate_complete_views(self, campaign: CampaignData, impressions_list: List[float], seed: str) -> List[int]:
+        """Allocate overview complete views across breakdown rows."""
+        if not campaign.complete_views or campaign.complete_views <= 0:
+            return [0] * len(impressions_list)
+        return self._allocate_metric(campaign.complete_views, impressions_list, seed)
 
     def _write_breakdown_row(
         self,
@@ -429,32 +440,27 @@ class ReportGenerator:
     def _write_device_subsection(self, campaign: CampaignData):
         impressions = [device.impressions for device in campaign.device_breakdown]
         reaches = self._allocate_reach(campaign.reach_data.reach, impressions, f'{campaign.audience}-device')
-        complete_views = self._complete_views_for_breakdown(campaign)
-        for device, reach in zip(campaign.device_breakdown, reaches):
-            self._write_breakdown_row(device.device_type, device.impressions, device.clicks, reach, complete_views, is_amount_dash=True)
+        complete_views = self._allocate_complete_views(campaign, impressions, f'{campaign.audience}-device-complete-views')
+        for device, reach, views in zip(campaign.device_breakdown, reaches, complete_views):
+            self._write_breakdown_row(device.device_type, device.impressions, device.clicks, reach, views, is_amount_dash=True)
 
     def _write_creative_subsection(self, campaign: CampaignData):
         impressions = [creative.impressions for creative in campaign.creative_breakdown]
         reaches = self._allocate_reach(campaign.reach_data.reach, impressions, f'{campaign.audience}-creative')
-        complete_views = self._complete_views_for_breakdown(campaign)
-        for creative, reach in zip(campaign.creative_breakdown, reaches):
-            self._write_breakdown_row(creative.name, creative.impressions, creative.clicks, reach, complete_views, is_amount_dash=True)
+        complete_views = self._allocate_complete_views(campaign, impressions, f'{campaign.audience}-creative-complete-views')
+        for creative, reach, views in zip(campaign.creative_breakdown, reaches, complete_views):
+            self._write_breakdown_row(creative.name, creative.impressions, creative.clicks, reach, views, is_amount_dash=True)
 
     def _write_age_subsection(self, campaign: CampaignData):
         impressions = [age.impressions for age in campaign.age_breakdown]
         reaches = self._allocate_reach(campaign.reach_data.reach, impressions, f'{campaign.audience}-age')
-        complete_views = self._complete_views_for_breakdown(campaign)
-        for age, reach in zip(campaign.age_breakdown, reaches):
-            self._write_breakdown_row(age.age_band, age.impressions, age.clicks, reach, complete_views, is_amount_dash=False)
+        complete_views = self._allocate_complete_views(campaign, impressions, f'{campaign.audience}-age-complete-views')
+        for age, reach, views in zip(campaign.age_breakdown, reaches, complete_views):
+            self._write_breakdown_row(age.age_band, age.impressions, age.clicks, reach, views, is_amount_dash=False)
 
     def _write_gender_subsection(self, campaign: CampaignData):
         impressions = [gender.impressions for gender in campaign.gender_breakdown]
         reaches = self._allocate_reach(campaign.reach_data.reach, impressions, f'{campaign.audience}-gender')
-        complete_views = self._complete_views_for_breakdown(campaign)
-        for gender, reach in zip(campaign.gender_breakdown, reaches):
-            self._write_breakdown_row(gender.gender, gender.impressions, gender.clicks, reach, complete_views, is_amount_dash=False)
-
-    def _complete_views_for_breakdown(self, campaign: CampaignData) -> float:
-        if self.selected_format.strip().lower() == 'video':
-            return campaign.complete_views
-        return 0
+        complete_views = self._allocate_complete_views(campaign, impressions, f'{campaign.audience}-gender-complete-views')
+        for gender, reach, views in zip(campaign.gender_breakdown, reaches, complete_views):
+            self._write_breakdown_row(gender.gender, gender.impressions, gender.clicks, reach, views, is_amount_dash=False)
