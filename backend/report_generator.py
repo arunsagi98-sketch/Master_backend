@@ -32,9 +32,17 @@ class ReportGenerator:
         ('Punjabi', '2')
     ]
 
-    def __init__(self, campaigns: List[CampaignData], template_metadata: TemplateMetadata):
+    def __init__(
+        self,
+        campaigns: List[CampaignData],
+        template_metadata: TemplateMetadata,
+        selected_platform: str = "MPN",
+        selected_format: str = "Banner",
+    ):
         self.campaigns = self._sort_campaigns(campaigns)
         self.template = template_metadata
+        self.selected_platform = selected_platform or "MPN"
+        self.selected_format = selected_format or "Banner"
         self.wb = Workbook()
         self.ws = self.wb.active
         self.ws.title = 'MPN & CPN Breakdown'
@@ -157,26 +165,28 @@ class ReportGenerator:
 
     def _write_overview_row(self, campaign: CampaignData):
         row = self.current_row
-        audience_label = f'{campaign.audience} - Banner - Burst - {campaign.burst_number}'
+        audience_label = campaign.audience_label
         reach_data = campaign.reach_data
         booked_impressions = 0
+        is_video = self.selected_format.strip().lower() == 'video'
+        complete_views = campaign.complete_views if is_video else 0
 
         values = [
-            'MPN',
-            'Banner',
+            self.selected_platform,
+            self.selected_format,
             audience_label,
             datetime.now(),
             campaign.start_date,
             campaign.end_date,
             booked_impressions,
             reach_data.actual_impressions,
-            f'=(E{row}-F{row})/(G{row}-F{row})',
+            0,
             f'=IFERROR(I{row}/H{row},0)',
             reach_data.reach,
             reach_data.frequency,
             reach_data.link_clicks,
             f'=N{row}/I{row}',
-            '-',
+            complete_views,
             '-',
             f'=S{row}*K{row}',
             None,
@@ -197,7 +207,7 @@ class ReportGenerator:
             '#,##0',
             '#,##0',
             '0.00%',
-            None,
+            '#,##0',
             None,
             '$#,##0.00;[Red]\\-"$"#,##0.00',
             '$#,##0.00;[Red]\\-"$"#,##0.00',
@@ -286,7 +296,7 @@ class ReportGenerator:
 
     def _write_performance_section(self, campaign: CampaignData):
         self.current_row += 2
-        title = f'Performance breakdown - by Audience - {campaign.audience} - Banner - Burst - {campaign.burst_number}'
+        title = f'Performance breakdown - by Audience - {campaign.audience_label}'
         self._write_section_title(self.current_row, title)
         self.current_row += 1
 
@@ -364,6 +374,7 @@ class ReportGenerator:
         impressions: float,
         clicks: float,
         reach: int,
+        complete_views: float,
         is_amount_dash: bool = False,
     ):
         row = self.current_row
@@ -373,7 +384,7 @@ class ReportGenerator:
             impressions,
             reach,
             self.FREQUENCY,
-            '-',
+            complete_views,
             clicks,
             f'=G{row}/C{row}',
             '-' if is_amount_dash else None,
@@ -418,23 +429,32 @@ class ReportGenerator:
     def _write_device_subsection(self, campaign: CampaignData):
         impressions = [device.impressions for device in campaign.device_breakdown]
         reaches = self._allocate_reach(campaign.reach_data.reach, impressions, f'{campaign.audience}-device')
+        complete_views = self._complete_views_for_breakdown(campaign)
         for device, reach in zip(campaign.device_breakdown, reaches):
-            self._write_breakdown_row(device.device_type, device.impressions, device.clicks, reach, is_amount_dash=True)
+            self._write_breakdown_row(device.device_type, device.impressions, device.clicks, reach, complete_views, is_amount_dash=True)
 
     def _write_creative_subsection(self, campaign: CampaignData):
         impressions = [creative.impressions for creative in campaign.creative_breakdown]
         reaches = self._allocate_reach(campaign.reach_data.reach, impressions, f'{campaign.audience}-creative')
+        complete_views = self._complete_views_for_breakdown(campaign)
         for creative, reach in zip(campaign.creative_breakdown, reaches):
-            self._write_breakdown_row(creative.name, creative.impressions, creative.clicks, reach, is_amount_dash=True)
+            self._write_breakdown_row(creative.name, creative.impressions, creative.clicks, reach, complete_views, is_amount_dash=True)
 
     def _write_age_subsection(self, campaign: CampaignData):
         impressions = [age.impressions for age in campaign.age_breakdown]
         reaches = self._allocate_reach(campaign.reach_data.reach, impressions, f'{campaign.audience}-age')
+        complete_views = self._complete_views_for_breakdown(campaign)
         for age, reach in zip(campaign.age_breakdown, reaches):
-            self._write_breakdown_row(age.age_band, age.impressions, age.clicks, reach, is_amount_dash=False)
+            self._write_breakdown_row(age.age_band, age.impressions, age.clicks, reach, complete_views, is_amount_dash=False)
 
     def _write_gender_subsection(self, campaign: CampaignData):
         impressions = [gender.impressions for gender in campaign.gender_breakdown]
         reaches = self._allocate_reach(campaign.reach_data.reach, impressions, f'{campaign.audience}-gender')
+        complete_views = self._complete_views_for_breakdown(campaign)
         for gender, reach in zip(campaign.gender_breakdown, reaches):
-            self._write_breakdown_row(gender.gender, gender.impressions, gender.clicks, reach, is_amount_dash=False)
+            self._write_breakdown_row(gender.gender, gender.impressions, gender.clicks, reach, complete_views, is_amount_dash=False)
+
+    def _complete_views_for_breakdown(self, campaign: CampaignData) -> float:
+        if self.selected_format.strip().lower() == 'video':
+            return campaign.complete_views
+        return 0

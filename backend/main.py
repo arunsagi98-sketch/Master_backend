@@ -28,6 +28,8 @@ TEMP_DIR = tempfile.gettempdir()
 class GenerateReportRequest(BaseModel):
     input_files: List[str]
     template_file: str
+    selectedPlatform: str = "MPN"
+    selectedFormat: str = "Banner"
 
 @app.post("/api/upload")
 async def upload_files(files: list[UploadFile] = File(...)):
@@ -111,7 +113,7 @@ async def generate_report(request: GenerateReportRequest):
         campaigns = []
         for file_path in request.input_files:
             try:
-                campaign_data = ExcelParser.parse_input_file(file_path)
+                campaign_data = ExcelParser.parse_input_file(file_path, request.selectedFormat)
                 campaigns.append(campaign_data)
             except Exception as e:
                 raise HTTPException(
@@ -130,7 +132,12 @@ async def generate_report(request: GenerateReportRequest):
         
         # Generate report
         try:
-            generator = ReportGenerator(campaigns, template_metadata)
+            generator = ReportGenerator(
+                campaigns,
+                template_metadata,
+                selected_platform=request.selectedPlatform,
+                selected_format=request.selectedFormat,
+            )
             workbook = generator.generate()
             
             # Save to temporary file

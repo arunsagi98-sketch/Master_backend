@@ -1,3 +1,4 @@
+import os
 import re
 from typing import List, Dict, Tuple, Optional
 from openpyxl import load_workbook
@@ -41,7 +42,30 @@ class ExcelParser:
             burst_number = "1"
         
         return audience, burst_number
-    
+
+    @staticmethod
+    def extract_audience_label(filename: str, selected_format: str = "") -> str:
+        """Extract the report audience label from a filename without using the full file name."""
+        stem = filename.rsplit('.', 1)[0]
+        parts = [part for part in re.split(r'[_\s]+', stem) if part]
+        format_value = (selected_format or "").strip().lower()
+
+        if format_value:
+            for index, part in enumerate(parts):
+                if part.lower() == format_value:
+                    return "_".join(parts[:index + 1])
+
+        for index, part in enumerate(parts):
+            if part.lower() in {"banner", "video"}:
+                return "_".join(parts[:index + 1])
+
+        for marker in ["_Final_Report", "_Report", "_Final"]:
+            marker_index = stem.lower().find(marker.lower())
+            if marker_index > 0:
+                return stem[:marker_index]
+
+        return stem
+
     @staticmethod
     def _extract_audience_from_creative(creatives: List[CreativeBreakdown]) -> Optional[str]:
         """Extract audience name (e.g., Filipino) from creative names"""
@@ -66,7 +90,7 @@ class ExcelParser:
         return None
 
     @staticmethod
-    def parse_input_file(filepath: str) -> CampaignData:
+    def parse_input_file(filepath: str, selected_format: str = "") -> CampaignData:
         """Parse a single input campaign report file"""
         wb = load_workbook(filepath, data_only=True)
         
@@ -75,8 +99,9 @@ class ExcelParser:
             raise ValueError("Missing required sheet: REACH")
         
         # Extract filename info as a baseline
-        filename = filepath.split('\\')[-1]
+        filename = os.path.basename(filepath)
         file_audience, burst_number = ExcelParser.parse_filename(filename)
+        audience_label = ExcelParser.extract_audience_label(filename, selected_format)
         
         # Extract CREATIVE data FIRST to get the real audience name
         creative_breakdown = []
@@ -110,19 +135,23 @@ class ExcelParser:
             
         # Extract dates
         start_date, end_date = datetime.today(), datetime.today()
+        complete_views = 0
         if 'DATE' in wb.sheetnames:
             start_date, end_date = ExcelParser._parse_date_sheet(wb['DATE'])
+            complete_views = ExcelParser._parse_complete_views(wb['DATE'])
         
         return CampaignData(
             audience=audience,
             burst_number=burst_number,
+            audience_label=audience_label,
             reach_data=reach_data,
             device_breakdown=device_breakdown,
             creative_breakdown=creative_breakdown,
             age_breakdown=age_breakdown,
             gender_breakdown=gender_breakdown,
             start_date=start_date,
-            end_date=end_date
+            end_date=end_date,
+            complete_views=complete_views
         )
     
     @staticmethod
@@ -340,6 +369,36 @@ class ExcelParser:
         start_date = min(dates)
         end_date = max(dates)
         return start_date, end_date
+
+    @staticmethod
+    def _parse_complete_views(sheet) -> float:
+        """Extract total complete views from a video DATE sheet when present."""
+        complete_views_col = None
+        for cell in sheet[1]:
+            if cell.value is None:
+                continue
+
+            header = str(cell.value).strip().lower()
+            if 'complete' in header and 'view' in header:
+                complete_views_col = cell.column
+                break
+
+        if complete_views_col is None:
+            return 0
+
+        total = 0
+        row = 2
+        while True:
+            label = sheet.cell(row, 1).value
+            if label is None:
+                break
+
+            if str(label).strip().lower() != 'grand total':
+                total += float(sheet.cell(row, complete_views_col).value or 0)
+
+            row += 1
+
+        return total
     
     @staticmethod
     def parse_template_file(filepath: str) -> TemplateMetadata:

@@ -48,6 +48,7 @@ class CampaignData:
     """Complete campaign data for one input file"""
     audience: str
     burst_number: str
+    audience_label: str
     reach_data: ReachData
     device_breakdown: List[DeviceBreakdown]
     creative_breakdown: List[CreativeBreakdown]
@@ -55,6 +56,7 @@ class CampaignData:
     gender_breakdown: List[GenderBreakdown]
     start_date: Optional[datetime]
     end_date: Optional[datetime]
+    complete_views: float = 0
 
 @dataclass
 class TemplateMetadata:
