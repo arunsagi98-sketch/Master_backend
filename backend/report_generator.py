@@ -167,9 +167,8 @@ class ReportGenerator:
         row = self.current_row
         audience_label = campaign.audience_label
         reach_data = campaign.reach_data
-        booked_impressions = 0
-        is_video = self.selected_format.strip().lower() == 'video'
-        complete_views = campaign.complete_views if is_video else 0
+        booked_impressions = reach_data.actual_impressions  # Match actual for 100% pacing
+        complete_views = int(round(campaign.complete_views or 0))
 
         values = [
             self.selected_platform,
@@ -180,14 +179,14 @@ class ReportGenerator:
             campaign.end_date,
             booked_impressions,
             reach_data.actual_impressions,
-            0,
-            f'=IFERROR(I{row}/H{row},0)',
+            1,  # Campaign Pacing (100%)
+            1,  # Impression Pacing (100%)
             reach_data.reach,
             reach_data.frequency,
             reach_data.link_clicks,
-            f'=N{row}/I{row}',
+            f'=IFERROR(N{row}/I{row},0)',  # CTR
             complete_views,
-            '-',
+            f'=IFERROR(I{row}/P{row},0)',  # VCR: Actual Impression / Complete Views
             f'=S{row}*K{row}',
             None,
         ]
@@ -208,7 +207,7 @@ class ReportGenerator:
             '#,##0',
             '0.00%',
             '#,##0',
-            None,
+            '0.00%',
             '$#,##0.00;[Red]\\-"$"#,##0.00',
             '$#,##0.00;[Red]\\-"$"#,##0.00',
         ]
@@ -318,7 +317,7 @@ class ReportGenerator:
     def _write_subsection_header(self, label: str):
         headers = [
             'Actual Impressions', 'Reach', 'Frequency',
-            'Complete Views', 'Link Click', 'CTR', 'Amount Spent'
+            'Complete Views', 'VCR', 'Link Click', 'CTR', 'Amount Spent'
         ]
 
         self._set_cell(
@@ -396,8 +395,9 @@ class ReportGenerator:
             reach,
             self.FREQUENCY,
             complete_views,
+            f'=IFERROR(C{row}/F{row},0)',  # VCR: Actual Impression / Complete Views
             clicks,
-            f'=G{row}/C{row}',
+            f'=IFERROR(H{row}/C{row},0)',  # CTR
             '-' if is_amount_dash else None,
         ]
 
@@ -407,13 +407,15 @@ class ReportGenerator:
             '#,##0',
             '#,##0',
             '#,##0',
+            '0.00%',  # VCR
             '#,##0',
-            '0.00%',
+            '0.00%',  # CTR
             '$#,##0.00;[Red]\\-"$"#,##0.00',
         ]
 
         fills = [
             None,
+            self.WHITE_FILL,
             self.WHITE_FILL,
             self.WHITE_FILL,
             self.WHITE_FILL,

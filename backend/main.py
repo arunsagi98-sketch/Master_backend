@@ -5,7 +5,7 @@ import os
 import tempfile
 from pathlib import Path
 from pydantic import BaseModel
-from typing import List
+from typing import List, Optional
 from backend.excel_parser import ExcelParser
 from backend.report_generator import ReportGenerator
 from backend.models import TemplateMetadata
@@ -30,6 +30,8 @@ class GenerateReportRequest(BaseModel):
     template_file: str
     selectedPlatform: str = "MPN"
     selectedFormat: str = "Banner"
+    platform: Optional[str] = None
+    format: Optional[str] = None
 
 @app.post("/api/upload")
 async def upload_files(files: list[UploadFile] = File(...)):
@@ -109,11 +111,14 @@ async def generate_report(request: GenerateReportRequest):
                 detail=f"Template file not found: {request.template_file}"
             )
         
+        selected_platform = request.platform or request.selectedPlatform
+        selected_format = request.format or request.selectedFormat
+
         # Parse all input files
         campaigns = []
         for file_path in request.input_files:
             try:
-                campaign_data = ExcelParser.parse_input_file(file_path, request.selectedFormat)
+                campaign_data = ExcelParser.parse_input_file(file_path, selected_format)
                 campaigns.append(campaign_data)
             except Exception as e:
                 raise HTTPException(
@@ -135,8 +140,8 @@ async def generate_report(request: GenerateReportRequest):
             generator = ReportGenerator(
                 campaigns,
                 template_metadata,
-                selected_platform=request.selectedPlatform,
-                selected_format=request.selectedFormat,
+                selected_platform=selected_platform,
+                selected_format=selected_format,
             )
             workbook = generator.generate()
             
